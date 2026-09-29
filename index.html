@@ -464,6 +464,7 @@
     shareHelp.classList.remove('show');
 
     var idPromise = parsed.kind === 'share' ? resolveShareLink(parsed.path) : Promise.resolve(null);
+    var attemptErrors = [];
 
     idPromise.catch(function(){
       if(parsed.kind === 'share') throw { shareResolveFailed: true };
@@ -484,7 +485,10 @@
       }
 
       return candidates.reduce(function(chain, url){
-        return chain.catch(function(){ return fetchJson(url); });
+        return chain.catch(function(prevErr){
+          if(prevErr) attemptErrors.push(url + ' → ' + (prevErr.message || String(prevErr)));
+          return fetchJson(url);
+        });
       }, Promise.reject());
     }).then(function(json){
       var post = extractPost(json);
@@ -492,11 +496,14 @@
       setStatus('');
     }).catch(function(err){
       console.error(err);
+      if(err && !err.shareResolveFailed){
+        attemptErrors.push('(final) ' + (err.message || String(err)));
+      }
       if(err && err.shareResolveFailed){
         setStatus('Couldn\'t automatically resolve this short share link — tap below to open it, then copy the full link from your browser\'s address bar and paste it here instead.', true);
         showShareFallback(raw.trim());
       } else {
-        setStatus('Couldn\'t load that post. Reddit may be blocking the request, or the link is private/removed.', true);
+        setStatus('Couldn\'t load that post. Details: ' + attemptErrors.join(' | '), true);
       }
     }).then(function(){
       loadBtn.disabled = false;
