@@ -403,11 +403,23 @@
     return m ? m[1] : null;
   }
 
+  var RESOLVER_URL = 'https://reddit-narrator-resolver.mikey-257.workers.dev/';
+
   function resolveShareLink(path){
     // new-style /r/<sub>/s/<id> share links redirect server-side; a script fetch can't
-    // follow that redirect across origins without CORS, so bounce it through a couple of
-    // public proxies. Both are best-effort and sometimes down, hence the fallback UI.
+    // follow that redirect across origins without CORS, so a small Worker does the
+    // redirect hop for us. Public CORS proxies are kept as a backup in case the
+    // Worker is ever unreachable.
     var full = 'https://www.reddit.com' + path;
+    function viaResolver(){
+      return fetch(RESOLVER_URL + '?url=' + encodeURIComponent(full)).then(function(res){
+        if(!res.ok) throw new Error('resolver http ' + res.status);
+        return res.json();
+      }).then(function(data){
+        if(!data || !data.id) throw new Error('resolver: no id found');
+        return data.id;
+      });
+    }
     function viaAllOrigins(){
       return fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(full)).then(function(res){
         if(!res.ok) throw new Error('allorigins http ' + res.status);
@@ -431,7 +443,7 @@
         return id;
       });
     }
-    return viaAllOrigins().catch(viaCodetabs);
+    return viaResolver().catch(viaAllOrigins).catch(viaCodetabs);
   }
 
   function showShareFallback(rawUrl){
