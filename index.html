@@ -656,6 +656,23 @@
 
   resetTransportUI();
 
+  // ---------- incoming share intent (Android "Share" → Reddit Narrator) ----------
+  function extractUrlFromText(text){
+    if(!text) return null;
+    var m = text.match(/https?:\/\/\S+/);
+    return m ? m[0] : null;
+  }
+  (function handleSharedLink(){
+    var params = new URLSearchParams(window.location.search);
+    if(!params.has('url') && !params.has('text') && !params.has('title')) return;
+    var shared = params.get('url') || extractUrlFromText(params.get('text')) || extractUrlFromText(params.get('title'));
+    history.replaceState(null, '', window.location.pathname);
+    if(shared){
+      urlInput.value = shared;
+      loadPost();
+    }
+  })();
+
   if('serviceWorker' in navigator){
     var refreshedForUpdate = false;
     navigator.serviceWorker.addEventListener('controllerchange', function(){
