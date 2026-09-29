@@ -465,6 +465,7 @@
 
     var idPromise = parsed.kind === 'share' ? resolveShareLink(parsed.path) : Promise.resolve(null);
     var attemptErrors = [];
+    var firstCandidateUrl = null;
 
     idPromise.catch(function(){
       if(parsed.kind === 'share') throw { shareResolveFailed: true };
@@ -484,6 +485,7 @@
         throw new Error('could not resolve link');
       }
 
+      firstCandidateUrl = candidates[0];
       return candidates.reduce(function(chain, url){
         return chain.catch(function(prevErr){
           if(prevErr) attemptErrors.push(url + ' → ' + (prevErr.message || String(prevErr)));
@@ -494,6 +496,7 @@
       var post = extractPost(json);
       renderPost(post);
       setStatus('');
+      loadBtn.disabled = false;
     }).catch(function(err){
       console.error(err);
       if(err && !err.shareResolveFailed){
@@ -502,11 +505,23 @@
       if(err && err.shareResolveFailed){
         setStatus('Couldn\'t automatically resolve this short share link — tap below to open it, then copy the full link from your browser\'s address bar and paste it here instead.', true);
         showShareFallback(raw.trim());
-      } else {
-        setStatus('Couldn\'t load that post. Details: ' + attemptErrors.join(' | '), true);
+        loadBtn.disabled = false;
+        return;
       }
-    }).then(function(){
-      loadBtn.disabled = false;
+      var baseMsg = 'Couldn\'t load that post. Details: ' + attemptErrors.join(' | ');
+      if(!firstCandidateUrl){
+        setStatus(baseMsg, true);
+        loadBtn.disabled = false;
+        return;
+      }
+      setStatus(baseMsg + ' | probing…', true);
+      fetch(firstCandidateUrl, { mode: 'no-cors' }).then(function(){
+        setStatus(baseMsg + ' | no-cors probe: reached the server fine — this is a CORS policy block, not a network/DNS block.', true);
+      }).catch(function(probeErr){
+        setStatus(baseMsg + ' | no-cors probe also failed: ' + (probeErr.message || String(probeErr)) + ' — likely a network/DNS-level block, not CORS.', true);
+      }).then(function(){
+        loadBtn.disabled = false;
+      });
     });
   }
 
