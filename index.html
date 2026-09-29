@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reddit Narrator</title>
+<meta name="description" content="Paste a Reddit post link and have it read aloud, with the current line highlighted as it's spoken.">
+<meta name="theme-color" content="#12141a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --surface:#ffffff;
+    --surface-2:#eef0f4;
+    --border:#dde1e7;
+    --text:#141821;
+    --muted:#5b6272;
+    --accent:#2f8f7a;
+    --accent-ink:#ffffff;
+    --danger:#c0403a;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12141a;
+      --surface:#1b1e27;
+      --surface-2:#222634;
+      --border:#2b2f3b;
+      --text:#eef0f4;
+      --muted:#9aa1b4;
+      --accent:#4fd8bd;
+      --accent-ink:#0b1512;
+      --danger:#ff8a80;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12141a;
+    --surface:#1b1e27;
+    --surface-2:#222634;
+    --border:#2b2f3b;
+    --text:#eef0f4;
+    --muted:#9aa1b4;
+    --accent:#4fd8bd;
+    --accent-ink:#0b1512;
+    --danger:#ff8a80;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Literata',Georgia,'Times New Roman',serif;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .topbar{
+    flex:none;
+    padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top,0px));
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+  }
+  .brand-mark{
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--accent);
+    font-weight:600;
+  }
+  .brand h1{
+    margin:0;
+    font-size:17px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .url-row{
+    display:flex;
+    gap:8px;
+  }
+  .url-row input{
+    flex:1;
+    min-width:0;
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:13px;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+  }
+  .url-row input::placeholder{color:var(--muted);}
+  .url-row input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .btn{
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    padding:10px 14px;
+    cursor:pointer;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .btn-primary{
+    background:var(--accent);
+    color:var(--accent-ink);
+    border-color:var(--accent);
+  }
+  .status{
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:12px;
+    color:var(--muted);
+    min-height:16px;
+  }
+  .status.err{color:var(--danger);}
+
+  .player{
+    flex:none;
+    display:none;
+    padding:10px 16px;
+    background:var(--surface-2);
+    border-bottom:1px solid var(--border);
+    gap:10px;
+    flex-direction:column;
+  }
+  .player.show{display:flex;}
+  .transport{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .transport .btn{padding:9px 12px;}
+  .rate-wrap{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:12px;
+    color:var(--muted);
+  }
+  .rate-wrap input[type=range]{accent-color:var(--accent);width:90px;}
+  select{
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:12px;
+    padding:7px 8px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text);
+    max-width:150px;
+  }
+
+  main{
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+    padding:20px 16px calc(28px + env(safe-area-inset-bottom,0px));
+  }
+  .placeholder{
+    color:var(--muted);
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:13px;
+    line-height:1.7;
+    max-width:52ch;
+    margin:10vh auto 0;
+    text-align:center;
+  }
+  .article{display:none;max-width:64ch;margin:0 auto;}
+  .article.show{display:block;}
+  .meta{
+    font-family:'IBM Plex Mono',ui-monospace,monospace;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--muted);
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .meta .nsfw{color:var(--danger);}
+  .headline{
+    font-size:24px;
+    font-weight:600;
+    line-height:1.3;
+    text-wrap:balance;
+    margin:0 0 16px;
+  }
+  .body-text p{
+    font-size:17px;
+    line-height:1.75;
+    margin:0 0 16px;
+  }
+  .body-text .note{color:var(--muted);font-style:italic;}
+  .body-text a{color:var(--accent);}
+  .seg{
+    cursor:pointer;
+    border-radius:3px;
+    padding:0 1px;
+  }
+  .seg:hover{background:var(--surface-2);}
+  .seg.active{
+    background:var(--accent);
+    color:var(--accent-ink);
+  }
+  .headline .seg.active{background:var(--accent);color:var(--accent-ink);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="brand-mark">&#9835; narrate</span><h1>Reddit Narrator</h1></div>
+  <div class="url-row">
+    <input id="urlInput" type="url" inputmode="url" placeholder="Paste a reddit.com or redd.it post link&hellip;" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="btn btn-primary" id="loadBtn">Load</button>
+  </div>
+  <div class="status" id="statusEl"></div>
+</div>
+
+<div class="player" id="player">
+  <div class="transport">
+    <button class="btn btn-primary" id="playBtn">&#9654; Play</button>
+    <button class="btn" id="pauseBtn">&#10073;&#10073; Pause</button>
+    <button class="btn" id="stopBtn">&#9632; Stop</button>
+    <div class="rate-wrap">
+      <span id="rateLabel">1.0x</span>
+      <input type="range" id="rateInput" min="0.6" max="2" step="0.1" value="1">
+    </div>
+    <select id="voiceSelect"></select>
+  </div>
+</div>
+
+<main>
+  <p class="placeholder" id="placeholder">Paste a link to a Reddit post above and tap Load. The title and post text will appear here, ready to be read aloud &mdash; tap any line to jump the narration straight to it.</p>
+  <article class="article" id="article">
+    <div class="meta" id="metaEl"></div>
+    <h2 class="headline" id="titleEl"></h2>
+    <div class="body-text" id="bodyEl"></div>
+  </article>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  var urlInput = document.getElementById('urlInput');
+  var loadBtn = document.getElementById('loadBtn');
+  var statusEl = document.getElementById('statusEl');
+  var placeholder = document.getElementById('placeholder');
+  var article = document.getElementById('article');
+  var metaEl = document.getElementById('metaEl');
+  var titleEl = document.getElementById('titleEl');
+  var bodyEl = document.getElementById('bodyEl');
+  var player = document.getElementById('player');
+  var playBtn = document.getElementById('playBtn');
+  var pauseBtn = document.getElementById('pauseBtn');
+  var stopBtn = document.getElementById('stopBtn');
+  var rateInput = document.getElementById('rateInput');
+  var rateLabel = document.getElementById('rateLabel');
+  var voiceSelect = document.getElementById('voiceSelect');
+
+  var segments = [];       // { text, el }
+  var currentIndex = 0;
+  var voices = [];
+
+  // ---------- persisted preferences (per-device convenience only) ----------
+  function loadPrefs(){
+    try{
+      var rate = localStorage.getItem('rn_rate');
+      if(rate) { rateInput.value = rate; rateLabel.textContent = parseFloat(rate).toFixed(1)+'x'; }
+    }catch(e){}
+  }
+  function savePrefs(){
+    try{ localStorage.setItem('rn_rate', rateInput.value); }catch(e){}
+    try{ if(voiceSelect.value) localStorage.setItem('rn_voice', voiceSelect.value); }catch(e){}
+  }
+  loadPrefs();
+
+  // ---------- voices ----------
+  function populateVoices(){
+    voices = speechSynthesis.getVoices();
+    if(!voices.length) return;
+    var preferred = null;
+    try{ preferred = localStorage.getItem('rn_voice'); }catch(e){}
+    voiceSelect.innerHTML = '';
+    voices.forEach(function(v, i){
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = v.name + ' (' + v.lang + ')';
+      voiceSelect.appendChild(opt);
+    });
+    if(preferred){
+      var match = voices.findIndex(function(v){ return v.name === preferred; });
+      if(match >= 0) voiceSelect.value = String(match);
+    } else {
+      var enIdx = voices.findIndex(function(v){ return /^en/i.test(v.lang) && v.default; });
+      if(enIdx < 0) enIdx = voices.findIndex(function(v){ return /^en/i.test(v.lang); });
+      if(enIdx >= 0) voiceSelect.value = String(enIdx);
+    }
+  }
+  populateVoices();
+  if('onvoiceschanged' in speechSynthesis) speechSynthesis.onvoiceschanged = populateVoices;
+
+  rateInput.addEventListener('input', function(){
+    rateLabel.textContent = parseFloat(rateInput.value).toFixed(1) + 'x';
+    savePrefs();
+  });
+  voiceSelect.addEventListener('change', savePrefs);
+
+  // ---------- fetching a post ----------
+  function setStatus(msg, isErr){
+    statusEl.textContent = msg || '';
+    statusEl.classList.toggle('err', !!isErr);
+  }
+
+  function parseRedditUrl(raw){
+    var s = raw.trim();
+    if(!s) return null;
+    var u;
+    try{ u = new URL(s); }
+    catch(e){ try{ u = new URL('https://' + s); }catch(e2){ return null; } }
+    var host = u.hostname.replace(/^www\./,'').replace(/^old\./,'').replace(/^m\./,'');
+    if(host === 'redd.it'){
+      var id = u.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
+      if(!id) return null;
+      return { kind:'id', id: id };
+    }
+    if(host !== 'reddit.com') return null;
+    var path = u.pathname.replace(/\/+$/,'');
+    if(/\/s\/[A-Za-z0-9]+/.test(path)){
+      return { kind:'share', path: path };
+    }
+    var m = path.match(/\/comments\/([a-z0-9]+)/i);
+    if(m) return { kind:'id', id: m[1] };
+    return { kind:'path', path: path };
+  }
+
+  function fetchJson(url){
+    return fetch(url, { headers: { 'Accept':'application/json' } }).then(function(res){
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    });
+  }
+
+  function extractPost(json){
+    var listing = Array.isArray(json) ? json[0] : json;
+    var child = listing && listing.data && listing.data.children && listing.data.children[0];
+    if(!child || !child.data) throw new Error('unexpected response shape');
+    return child.data;
+  }
+
+  function resolveShareLink(path){
+    // new-style /r/<sub>/s/<id> share links redirect; resolve the real URL via a proxy
+    var full = 'https://www.reddit.com' + path;
+    return fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(full)).then(function(res){
+      if(!res.ok) throw new Error('resolve failed');
+      return res.json();
+    }).then(function(data){
+      var finalUrl = data && data.status && data.status.url;
+      if(!finalUrl) throw new Error('no redirect target');
+      var m = finalUrl.match(/\/comments\/([a-z0-9]+)/i);
+      if(!m) throw new Error('could not resolve share link');
+      return m[1];
+    });
+  }
+
+  function loadPost(){
+    var raw = urlInput.value;
+    var parsed = parseRedditUrl(raw);
+    if(!parsed){
+      setStatus('That doesn\'t look like a reddit.com or redd.it link.', true);
+      return;
+    }
+    speechSynthesis.cancel();
+    loadBtn.disabled = true;
+    setStatus('Loading…');
+
+    var idPromise = parsed.kind === 'share' ? resolveShareLink(parsed.path) : Promise.resolve(null);
+
+    idPromise.then(function(resolvedId){
+      var candidates = [];
+      if(parsed.kind === 'id' || resolvedId){
+        var id = resolvedId || parsed.id;
+        candidates.push('https://www.reddit.com/comments/' + id + '.json?raw_json=1');
+        candidates.push('https://old.reddit.com/comments/' + id + '.json?raw_json=1');
+        candidates.push('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.reddit.com/comments/' + id + '.json?raw_json=1'));
+      } else if(parsed.kind === 'path'){
+        candidates.push('https://www.reddit.com' + parsed.path + '.json?raw_json=1');
+        candidates.push('https://old.reddit.com' + parsed.path + '.json?raw_json=1');
+        candidates.push('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.reddit.com' + parsed.path + '.json?raw_json=1'));
+      } else {
+        throw new Error('could not resolve link');
+      }
+
+      return candidates.reduce(function(chain, url){
+        return chain.catch(function(){ return fetchJson(url); });
+      }, Promise.reject());
+    }).then(function(json){
+      var post = extractPost(json);
+      renderPost(post);
+      setStatus('');
+    }).catch(function(err){
+      console.error(err);
+      setStatus('Couldn\'t load that post. Reddit may be blocking the request, or the link is private/removed. Try copying the full post link (not a short share link) and pasting it again.', true);
+    }).then(function(){
+      loadBtn.disabled = false;
+    });
+  }
+
+  loadBtn.addEventListener('click', loadPost);
+  urlInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') loadPost(); });
+
+  // ---------- rendering + markdown stripping ----------
+  function stripMarkdown(md){
+    return md
+      .replace(/\r\n/g, '\n')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/^>\s?/gm, '')
+      .replace(/^#{1,6}\s*/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .trim();
+  }
+
+  function splitSentences(text){
+    return text.split(/(?<=[.!?])\s+(?=[A-Z0-9"'“(])/).map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+
+  function makeSeg(text){
+    var span = document.createElement('span');
+    span.className = 'seg';
+    span.textContent = text;
+    span.addEventListener('click', function(){
+      var idx = segments.findIndex(function(s){ return s.el === span; });
+      if(idx >= 0) speakFrom(idx);
+    });
+    return span;
+  }
+
+  function renderPost(post){
+    segments = [];
+    currentIndex = 0;
+    bodyEl.innerHTML = '';
+
+    var sub = post.subreddit_name_prefixed || (post.subreddit ? 'r/' + post.subreddit : '');
+    var author = post.author ? 'u/' + post.author : '';
+    metaEl.innerHTML = '';
+    [sub, author].filter(Boolean).forEach(function(t){
+      var s = document.createElement('span');
+      s.textContent = t;
+      metaEl.appendChild(s);
+    });
+    if(post.over_18){
+      var nsfw = document.createElement('span');
+      nsfw.className = 'nsfw';
+      nsfw.textContent = 'NSFW';
+      metaEl.appendChild(nsfw);
+    }
+
+    titleEl.innerHTML = '';
+    var titleSeg = makeSeg(post.title || '(untitled post)');
+    titleEl.appendChild(titleSeg);
+    segments.push({ text: titleSeg.textContent, el: titleSeg });
+
+    var text = post.is_self ? (post.selftext || '').trim() : '';
+    if(text){
+      var clean = stripMarkdown(text);
+      var paragraphs = clean.split(/\n{2,}/).filter(Boolean);
+      paragraphs.forEach(function(para){
+        var p = document.createElement('p');
+        splitSentences(para.replace(/\n/g, ' ')).forEach(function(sentence, i){
+          var seg = makeSeg(sentence + ' ');
+          p.appendChild(seg);
+          segments.push({ text: sentence, el: seg });
+        });
+        bodyEl.appendChild(p);
+      });
+    } else {
+      var note = document.createElement('p');
+      note.className = 'note';
+      note.textContent = post.url
+        ? 'This is a link post with no text body to read. Link: ' + post.url
+        : 'This post has no text body to read.';
+      bodyEl.appendChild(note);
+    }
+
+    placeholder.style.display = 'none';
+    article.classList.add('show');
+    player.classList.add('show');
+    resetTransportUI();
+  }
+
+  // ---------- speech playback ----------
+  function clearActive(){
+    segments.forEach(function(s){ s.el.classList.remove('active'); });
+  }
+
+  function highlight(idx){
+    clearActive();
+    var seg = segments[idx];
+    if(!seg) return;
+    seg.el.classList.add('active');
+    seg.el.scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+
+  function speakNext(){
+    if(currentIndex >= segments.length){
+      clearActive();
+      resetTransportUI();
+      return;
+    }
+    var seg = segments[currentIndex];
+    var utt = new SpeechSynthesisUtterance(seg.text);
+    utt.rate = parseFloat(rateInput.value) || 1;
+    var vi = voiceSelect.value;
+    if(vi !== '' && voices[vi]) utt.voice = voices[vi];
+    utt.onstart = function(){ highlight(currentIndex); };
+    utt.onend = function(){ currentIndex++; speakNext(); };
+    utt.onerror = function(){ currentIndex++; speakNext(); };
+    speechSynthesis.speak(utt);
+  }
+
+  function speakFrom(idx){
+    speechSynthesis.cancel();
+    currentIndex = idx;
+    setTransportPlaying();
+    speakNext();
+  }
+
+  function setTransportPlaying(){
+    playBtn.disabled = true;
+    pauseBtn.disabled = false;
+    stopBtn.disabled = false;
+  }
+  function resetTransportUI(){
+    playBtn.disabled = false;
+    pauseBtn.disabled = true;
+    stopBtn.disabled = true;
+    pauseBtn.textContent = '┃┃ Pause';
+  }
+
+  playBtn.addEventListener('click', function(){
+    if(speechSynthesis.paused){
+      speechSynthesis.resume();
+      setTransportPlaying();
+      return;
+    }
+    speakFrom(currentIndex < segments.length ? currentIndex : 0);
+  });
+  pauseBtn.addEventListener('click', function(){
+    if(speechSynthesis.paused){
+      speechSynthesis.resume();
+      pauseBtn.textContent = '┃┃ Pause';
+    } else {
+      speechSynthesis.pause();
+      pauseBtn.textContent = '▶ Resume';
+    }
+  });
+  stopBtn.addEventListener('click', function(){
+    speechSynthesis.cancel();
+    currentIndex = 0;
+    clearActive();
+    resetTransportUI();
+  });
+
+  resetTransportUI();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+})();
+</script>
+</body>
+</html>
